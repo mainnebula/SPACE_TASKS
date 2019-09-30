@@ -13,7 +13,7 @@ for k in _keywords:
         keywords.append(sample)
 
 # generate unique username
-total_keywords = len(keywords)
+total_keywords = len(keywords) - 1
 _username = []
 while True:
     x = random.randint(0,total_keywords)
