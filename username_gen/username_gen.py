@@ -1,14 +1,22 @@
 import random
 import re
 
+EXCLUDE = [
+    'General', 'Our Dwarves', 'Our Moons', 'Exoplanets',
+    'Stars', 'wiki', 'Crux', 'Greek letters'
+]
+
 regex = re.compile('[^a-zA-Z]') # to remove non-letter characters
 
 # create list of all keywords from text file
-f = open("keywords.txt", "r").read()
-_keywords = f.split("\n")
+f = open('keywords.txt', 'r').read()
+_keywords = f.split('\n')
 keywords = []
+
 for k in _keywords:
     sample = regex.sub('', k)
+    if sample in EXCLUDE or k in EXCLUDE:
+        continue
     if sample != '':
         keywords.append(sample)
 
@@ -22,5 +30,5 @@ while True:
     if len(_username) == 2:
         break
 
-username = "".join(_username)
+username = ''.join(_username)
 print(username)
