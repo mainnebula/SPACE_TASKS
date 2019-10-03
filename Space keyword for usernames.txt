@@ -100,16 +100,12 @@ Juipter
 Saturn
 Uranus
 Neptune
-
-
 Our Dwarves
 Ceres
 Pluto
 Eris
 Haumea
 Makemake
-
-
 Our Moons
 Moon
 Deimos
@@ -245,8 +241,6 @@ Hydra
 Kerberos
 Nix
 Styx
-
-
 Exoplanets
 Spe
 Arion
@@ -279,12 +273,8 @@ Fortitudo
 Draugr
 Poltergeist
 Phobetor
-
-
 Stars
 wiki
-
-
 Crux
 Canis
 Andromeda
@@ -322,8 +312,6 @@ Octans
 Leo
 Pisces
 Sagitta
-
-
 Greek letters
 Alpha
 Eta
