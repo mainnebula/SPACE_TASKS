@@ -1,4 +1,4 @@
-﻿General
+General
 Asteroid
 Dipper
 BlackHole
@@ -91,7 +91,6 @@ Radar
 Universe
 Vector
 Axis
-Our planets
 Mercury
 Venus
 Earth
@@ -100,17 +99,11 @@ Juipter
 Saturn
 Uranus
 Neptune
-
-
-Our Dwarves
 Ceres
 Pluto
 Eris
 Haumea
 Makemake
-
-
-Our Moons
 Moon
 Deimos
 Phobos
@@ -245,9 +238,6 @@ Hydra
 Kerberos
 Nix
 Styx
-
-
-Exoplanets
 Spe
 Arion
 Arkas
@@ -279,12 +269,7 @@ Fortitudo
 Draugr
 Poltergeist
 Phobetor
-
-
-Stars
 wiki
-
-
 Crux
 Canis
 Andromeda
@@ -322,9 +307,6 @@ Octans
 Leo
 Pisces
 Sagitta
-
-
-Greek letters
 Alpha
 Eta
 Nu
