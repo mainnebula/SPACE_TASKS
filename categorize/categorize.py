@@ -51,7 +51,7 @@ def process_file(url, name, description):
         if i == 3:
             entry = line.split(' ')
             obj_id = entry[1]
-            # might have to populate updates in memory first and batch process after
+            # populate data in memory first and batch process after
             data = (obj_id, name[:-4], description.strip())
             buffer.append(data)
             i = 0
@@ -92,7 +92,6 @@ if __name__ == '__main__':
     URL = 'https://celestrak.com/NORAD/elements/'
     page = requests.get(URL)
     soup = BeautifulSoup(page.content, 'html.parser')
-    #links = soup.find_all('a')
     tables = soup.find_all('table', class_='striped-odd')
 
     tot_files = 0
@@ -119,7 +118,6 @@ if __name__ == '__main__':
     URL_SUP = 'https://celestrak.com/NORAD/elements/supplemental/'
     page = requests.get(URL_SUP)
     soup = BeautifulSoup(page.content, 'html.parser')
-    #links = soup.find_all('a')
     table = soup.find('table', class_='center outline')
 
     # get main category
