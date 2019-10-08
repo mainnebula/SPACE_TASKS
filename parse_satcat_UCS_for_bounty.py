@@ -1,183 +1,189 @@
 #!/usr/bin/env python
-# Template code for start of bounty - extracted from other source, and has not been tested in this form
-
 from hashlib import md5
-import logging
 import os
+import sys
 from lib import Database
-
-# import urllib.request
-# import csv
+from lib import logger
 import pandas as pd
-import numpy as np
+from datetime import datetime
 
-
-log = logging.getLogger(__name__)
-
-
-def fingerprint_file(file):
-    """Open, read file and calculate MD5 on its contents"""
-    with open(file, "rb") as fd:
-        # read contents of the file
-        _file_data = fd.read()
-        # pipe contents of the file through
-        file_fingerprint = md5(_file_data).hexdigest()
-    return file_fingerprint
+log = logger(__name__)
+CONFIG = os.path.abspath("config.yaml")
 
 
 def fingerprint_line(line):
     """ Creates a unique signature from a line."""
     return md5(line.encode("utf-8")).hexdigest()
 
-    def populate_SATCATtable(self):
-        # Set up database connection
-        db = Database(dbname, dbtype, dbhostname, dbusername, dbpassword)
-        db.createSATCATtable()
 
-        satcat_file_fingerprint = fingerprint_file("data/satcat.txt")
-        with open("data/satcat.txt") as file:
-            entry_batch = 0
-            for line in file:
-                entry_batch += 1
-                intl_desg = line[0:11].strip()
-                norad_number = int(line[13:18].strip())
-
-                multiple_name_flag = line[19].strip()
-                if not multiple_name_flag:
-                    multiple_name_flag = 0
-                else:
-                    multiple_name_flag = 1
-
-                payload_flag = line[20].strip()
-                if not payload_flag:
-                    payload_flag = 0
-                else:
-                    payload_flag = 1
-
-                ops_status_code = line[21].strip()
-                name = line[23:47].strip()
-                source = line[49:54].strip()
-                launch_date = line[56:66].strip()
-
-                decay_date = line[75:85].strip()
-                if not decay_date:
-                    decay_date = "0000-00-00"
-
-                try:
-                    orbit_period_minutes = float(line[87:94].strip())
-                except ValueError:
-                    orbit_period_minutes = -1
-
-                try:
-                    inclination_deg = float(line[96:101])
-                except ValueError:
-                    inclination_deg = -1
-
-                try:
-                    apogee = int(line[103:109])
-                except ValueError:
-                    apogee = -1
-
-                try:
-                    perigee = int(line[111:117])
-                except ValueError:
-                    perigee = -1
-
-                try:
-                    radar_crosssec = float(line[119:127])
-                except ValueError:
-                    radar_crosssec = -1
-
-                orbit_status_code = line[129:132].strip()
-
-                record_fingerprint = fingerprint_line(line)
-
-                satcat_tuple = (
-                    intl_desg,
-                    norad_number,
-                    multiple_name_flag,
-                    payload_flag,
-                    ops_status_code,
-                    name,
-                    source,
-                    launch_date,
-                    decay_date,
-                    orbit_period_minutes,
-                    inclination_deg,
-                    apogee,
-                    perigee,
-                    radar_crosssec,
-                    orbit_status_code,
-                    satcat_file_fingerprint,
-                    record_fingerprint,
-                )
-
-                satcatid = db.addSATCATentry(satcat_tuple)
-                print(satcat_tuple)
-                if entry_batch > 100:
-                    db.conn.commit()
-                    entry_batch = 0
-        db.conn.commit()
+def load_ucs_satdb_data():
+    log.info("Fetching UCSATDB data and loading into memory...")
+    satdb_url = "https://s3.amazonaws.com/ucs-documents/nuclear-weapons/sat-database/5-9-19-update/UCS_Satellite_Database_4-1-2019.txt"
+    satdb = pd.read_csv(satdb_url, delimiter="\t", encoding="Windows-1252")
+    satdb = satdb.iloc[:, :35]
+    return satdb
 
 
-def populate_UCSSATDBtable():
-    # Set up database connection
-    db = Database(dbname, dbtype, dbhostname, dbusername, dbpassword)
-    db.createUCSSATDBtable()
-
-    file_to_import = "data/UCS_Satellite_Database_4-1-2019.txt"
-
-    ucsdb_file_fingerprint = fingerprint_file(file_to_import)
-    # FIXME: There still appear to be some character encoding issues around "Earth's geomagnetic field"
-    with open(
-        file_to_import, "r", encoding="latin-1"
-    ) as file:  # FIXME: Doesn't work with UTF-8 type on import (it should)
-        entry_batch = 0
-        for line in file:
-            entry_batch += 1
-            if entry_batch == 1:
-                continue
-            fields = line.split("\t")
-
-            # The source CSV file has many more columns encoded than actual valid data
-            good_part = fields[0:35]
-
-            record_fingerprint = fingerprint_line(line)
-
-            ucsdb_tuple = tuple(good_part) + (
-                ucsdb_file_fingerprint,
-                record_fingerprint,
-            )
-
-            ucsdbid = db.addUCSDBentry(ucsdb_tuple)
-            print(ucsdb_tuple)
-            if entry_batch > 100:
-                db.conn.commit()
-                entry_batch = 0
-    db.conn.commit()
+def load_celestrak_satcat_data():
+    log.info("Fetching CELESTRAK SAT CAT data and loading into memory...")
+    satcat_url = "https://www.celestrak.com/pub/satcat.txt"
+    satcat = pd.read_csv(
+        satcat_url, engine="python", delimiter=r"\n", encoding="Windows-1252"
+    )
+    return satcat
 
 
-config = os.path.abspath("config.yaml")
-db = Database(config)
-db.createSATCATtable()
-db.createUCSSATDBtable()
+def fix_discrepencies(satdb, satcat):
+    log.info("Fixing discrepencies in the data...")
+    # discrepencies_url = "http://celestrak.com/pub/UCS-SD-Discrepancies.txt"
+    # discrepencies = pd.read_csv(
+    #     discrepencies_url, delim_whitespace=True, encoding="Windows-1252"
+    # )
+    return (satdb, satcat)
 
 
-# print(text[0:5000])
+def format(val):
+    if pd.isna(val):
+        return None
 
-satdb_url = "https://s3.amazonaws.com/ucs-documents/nuclear-weapons/sat-database/5-9-19-update/UCS_Satellite_Database_4-1-2019.txt"
-satdb = pd.read_csv(satdb_url, delimiter="\t", encoding="Windows-1252")
+    if type(val) is int or type(val) is float:
+        return val
 
-print("\n\n\n")
-satdb = satdb.iloc[:20, :36]
-# satdb.dropna(how='all', axis=1)
-print(satdb.describe())
-for row in satdb.itertuples(index=False, name=None):
-    savable = [i if pd.notna(i) else None for i in row]
-    savable = savable + ["line fingerprint", "file_fingerprint", "time"]
-    db.addUCSDBentry(savable)
-# satdb.to_sql("ucs_satdb", con=db.engine)
+    val = val.strip()
 
-# satcat_url = "https://www.celestrak.com/pub/satcat.txt"
-# satdb = pd.read_csv(satcat_url, delimiter="\t", encoding="Windows-1252")
-# print(satdb.describe())
+    try:
+        return int(val.replace(",", ""))
+    except:
+        pass
+
+    try:
+        return float(val.replace(",", ""))
+    except:
+        pass
+
+    try:
+        return datetime.strptime(val, "%m/%d/%y").date()
+    except:
+        pass
+
+    try:
+        return datetime.strptime(val, "%m/%d/%Y").date()
+    except:
+        pass
+
+    try:
+        return datetime.strptime(val, "%Y/%m/%d").date()
+    except:
+        pass
+
+    if not val or val == "N/A":
+        return None
+
+    return val
+
+
+def update_ucs_satdb_table(Database, df):
+    log.info("Updating the ucs_satdb table...")
+
+    total_rows = 0
+    data_batch = []
+    for row in df.itertuples(index=False, name=None):
+        record_fingerprint = fingerprint_line("".join(str(e) for e in row))
+        savable = [format(i) for i in row] + [record_fingerprint]
+
+        data_batch.append(savable)
+        total_rows = total_rows + 1
+
+        if len(data_batch) >= 100:
+            db.add_ucs_satdb_batch(data_batch)
+            data_batch = []
+
+    db.add_ucs_satdb_batch(data_batch)
+    log.info(f"{total_rows} added to ucs satdb")
+
+
+def parse_celestrak_row(line):
+    intl_desg = line[0:11]
+    norad_number = line[13:18]
+
+    multiple_name_flag = line[19]
+    if not multiple_name_flag:
+        multiple_name_flag = 0
+    else:
+        multiple_name_flag = 1
+
+    payload_flag = line[20]
+    if not payload_flag:
+        payload_flag = 0
+    else:
+        payload_flag = 1
+
+    ops_status_code = line[21]
+    name = line[23:47]
+    source = line[49:54]
+    launch_date = line[56:66]
+    launch_site = line[69:73]
+    decay_date = line[75:85]
+    orbit_period_minutes = line[87:94]
+    inclination_deg = line[96:101]
+    apogee = line[103:109]
+    perigee = line[111:117]
+    radar_crosssec = line[119:127]
+    orbit_status_code = line[129:132]
+
+    satcat_tuple = (
+        intl_desg,
+        norad_number,
+        multiple_name_flag,
+        payload_flag,
+        ops_status_code,
+        name,
+        source,
+        launch_date,
+        launch_site,
+        decay_date,
+        orbit_period_minutes,
+        inclination_deg,
+        apogee,
+        perigee,
+        radar_crosssec,
+        orbit_status_code,
+    )
+    return satcat_tuple
+
+
+def update_celestrak_satcat_table(Database, df):
+    log.info("Updating the celestrak_satcat table...")
+
+    data_batch = []
+    total_rows = 0
+    for row in df.itertuples(index=False, name=None):
+        row = parse_celestrak_row(row[0])
+        record_fingerprint = fingerprint_line("".join(str(e) for e in row))
+        savable = [format(i) for i in row] + [record_fingerprint]
+
+        data_batch.append(savable)
+        total_rows = total_rows + 1
+
+        if len(data_batch) >= 100:
+            db.add_celestrak_satcat_batch(data_batch)
+            data_batch = []
+
+    db.add_celestrak_satcat_batch(data_batch)
+    log.info(f"{total_rows} added to celestrak satcat")
+
+
+db = Database(CONFIG)
+db.create_celestrak_satcat_table()
+db.create_ucs_satdb_table()
+
+satdb = load_ucs_satdb_data()
+satcat = load_celestrak_satcat_data()
+
+satdb, satcat = fix_discrepencies(satdb, satcat)
+
+update_ucs_satdb_table(db, satdb)
+update_celestrak_satcat_table(db, satcat)
+
+log.info("Script Complete")
+sys.exit(0)
