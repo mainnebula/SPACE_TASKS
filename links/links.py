@@ -224,10 +224,10 @@ if __name__ == '__main__':
                     char_buffer = ''
                     break
                 prev_char = _char
-        # get sat code
+                
+        # get sat code and name
         sat_code = xx[0]
         sat_name = xx[3]
-        # get sat name
         total += 1
         sat_details = {'code': sat_code, 'name': sat_name}
         _buffer.append(sat_details)
