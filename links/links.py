@@ -2,6 +2,7 @@ import os
 import requests
 import re
 import time
+import urllib
 import mysql.connector
 from mysql.connector import errorcode
 from urllib import request as urllib_req
@@ -28,6 +29,7 @@ TABLE = (
     " `wikipedia` varchar(128))"
     " ENGINE=InnoDB")
 
+
 # --- VARIABLES ---
 
 regex_celestrak = re.compile(r'[^\d-]+')
@@ -45,41 +47,74 @@ def create_database(cursor):
         print(f'Failed creating database: {err}')
         os._exit(1)
 
+def failsafe_request(url):
+    i = 0
+    while True:
+        if i == 10: return None
+        i += 1
+        try:
+            req = requests.get(url)
+            return req
+        except:
+            print(f'\nFailed to load page ({url}). Retry number {i}...')
+
 def valid_nssdc(obj_id):
     # validate NSSDC description page
     link = link_to_nssdc(obj_id)
-    page = requests.get(link)
-    soup = BeautifulSoup(page.content, 'html.parser')
-    title = soup.find('title')
-    if 'Error' in title.next:
-        return False
-    content = soup.find('div', id='contentwrapper')
-    if obj_id in content.contents[0].text:
-        return True
-    else:
-        return False
+    page = failsafe_request(link)
+    if page is not None:
+        soup = BeautifulSoup(page.content, 'html.parser')
+        title = soup.find('title')
+        if 'Error' in title.next:
+            return False
+        content = soup.find('div', id='contentwrapper')
+        if obj_id in content.contents[0].text:
+            return True
+        else:
+            return False
+    return False
 
 def valid_celestrak(obj_id):
     # validate Celestrak description page
     link = link_to_celestrak(obj_id)
-    page = requests.get(link)
-    soup = BeautifulSoup(page.content, 'html.parser')
-    title = soup.find('title')
-    clean_id = regex_celestrak.sub('', obj_id)
-
-    if clean_id != '' and clean_id in title.next:
-        return True
+    page = failsafe_request(link)
+    if page is not None:
+        soup = BeautifulSoup(page.content, 'html.parser')
+        title = soup.find('title')
+        clean_id = regex_celestrak.sub('', obj_id)
+        try:
+            if clean_id != '' and clean_id in title.next:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            return False
     else:
         return False
 
-def valid_wikipedia(obj_id):
+def valid_wikipedia(sat):
     # validate Wikipedia description page
-    link = link_to_wikipedia(obj_id)
-    page = requests.get(link)
-    if page.status_code == 200:
-        return True
-    else:
-        return False
+    links = []
+    # add object number links and name links
+    links.append(link_to_wikipedia(sat['code']))
+    links.append(
+        link_to_wikipedia(
+            neat_for_url(sat['name'])
+        )
+    )
+    for link in links:
+        page = failsafe_request(link)
+        if page is not None:
+            if page.status_code == 200:
+                return link
+    return False
+
+def neat_for_url(sat_name):
+    # create valid url ending
+    _ = sat_name.replace(' ', '_')
+    result = urllib.parse.quote(_, safe='')
+    return result.capitalize().strip()
     
 def link_to_nssdc(obj_id):
     # create valid link to NSSDC page
@@ -91,12 +126,13 @@ def link_to_celestrak(obj_id):
     clean_id = regex_celestrak.sub('', obj_id)
     return f'https://celestrak.com/satcat/{year}/{clean_id}.php'
 
-def link_to_wikipedia(obj_id):
+def link_to_wikipedia(identifier):
     # create valid link to Wikipedia page
-    return f'https://en.wikipedia.org/wiki/{obj_id}'
+    return f'https://en.wikipedia.org/wiki/{identifier}'
 
-def check_sat(obj_id):
+def check_sat(sat_details):
     global buffer, total_processed
+    obj_id = sat_details['code']
     entry = {}
     entry['id'] = obj_id
     # check NSSDC
@@ -110,10 +146,11 @@ def check_sat(obj_id):
     else:
         entry['celestrak'] = None
     # check Wikipedia
-    if valid_wikipedia(obj_id):
-        entry['wikipedia'] = link_to_wikipedia(obj_id)
-    else:
+    wiki_check = valid_wikipedia(sat_details)
+    if wiki_check is False:
         entry['wikipedia'] = None
+    else:
+        entry['wikipedia'] = wiki_check
     # save result to DB
     buffer.append(entry)
     total_processed += 1
@@ -160,14 +197,42 @@ if __name__ == '__main__':
     _buffer = []
 
     print(f'Generating list of satellites...')
+    char_buffer = ''
     for _line in _file:
         line = _line.decode("utf-8")
-        x = line.split(' ')
-        sat = x[0]
+        #x = line.split(' ')
+        #sat = x[0]
+        xx = []
+        name_start = False
+        prev_char = ''
+        for _char in line:
+            if len(xx) < 3:
+                if _char != ' ':
+                    char_buffer += _char
+                else:
+                    if len(char_buffer) > 0:
+                        xx.append(char_buffer)
+                        char_buffer = ''
+            elif len(xx) == 3:
+                # name saving mode
+                if len(char_buffer) == 0 and _char != ' ':
+                    name_start = True
+                if name_start == True:
+                    char_buffer += _char
+                if prev_char == ' ' and _char == ' ':
+                    xx.append(char_buffer.strip())
+                    char_buffer = ''
+                    break
+                prev_char = _char
+        # get sat code
+        sat_code = xx[0]
+        sat_name = xx[3]
+        # get sat name
         total += 1
-        _buffer.append(sat)
+        sat_details = {'code': sat_code, 'name': sat_name}
+        _buffer.append(sat_details)
         print(f'{total}', end='\r')
-        if total == 200: break # TEST LIMIT: comment out this line to run full scan
+        #if total == 10000: break # TEST LIMIT: comment out this line to run full scan
     
     print(f'{total} satellites found.')
     Thread(target=progress).start()
@@ -180,7 +245,6 @@ if __name__ == '__main__':
         time.sleep(1)
 
     print('Saving to database...', end='')
-
 
     # clear current records
     clear_table = ("TRUNCATE TABLE links")
