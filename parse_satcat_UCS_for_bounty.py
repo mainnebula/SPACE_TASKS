@@ -21,6 +21,44 @@ def load_ucs_satdb_data():
     satdb_url = "https://s3.amazonaws.com/ucs-documents/nuclear-weapons/sat-database/5-9-19-update/UCS_Satellite_Database_4-1-2019.txt"
     satdb = pd.read_csv(satdb_url, delimiter="\t", encoding="Windows-1252")
     satdb = satdb.iloc[:, :35]
+    satdb.applymap(format)
+    satdb.columns = [
+        "name",
+        "country_registered",
+        "country_owner",
+        "owner_operator",
+        "users",
+        "purpose",
+        "purpose_detailed",
+        "orbit_class",
+        "orbit_type",
+        "GEO_longitude",
+        "perigee_km",
+        "apogee_km",
+        "eccentricity",
+        "inclination_degrees",
+        "period_minutes",
+        "launch_mass_kg",
+        "dry_mass_kg",
+        "power_watts",
+        "launch_date",
+        "expected_lifetime_years",
+        "contractor",
+        "contractor_country",
+        "launch_site",
+        "launch_vehicle",
+        "international_designator",
+        "norad_number",
+        "comments",
+        "detailed_comments",
+        "source_1",
+        "source_2",
+        "source_3",
+        "source_4",
+        "source_5",
+        "source_6",
+        "source_7",
+    ]
     return satdb
 
 
@@ -30,21 +68,72 @@ def load_celestrak_satcat_data():
     satcat = pd.read_csv(
         satcat_url, engine="python", delimiter=r"\n", encoding="Windows-1252"
     )
-    return satcat
+    data = []
+    for row in satcat.itertuples(index=False, name=None):
+        row = [format(q) for q in parse_celestrak_row(row[0])]
+        data.append(row)
+
+    df = pd.DataFrame(
+        data,
+        columns=[
+            "intl_desg",
+            "norad_num",
+            "multiple_name_flag",
+            "payload_flag",
+            "ops_status_code",
+            "name",
+            "source",
+            "launch_date",
+            "launch_site",
+            "decay_date",
+            "orbit_period_minutes",
+            "inclination_deg",
+            "apogee",
+            "perigee",
+            "radar_crosssec",
+            "orbit_status_code",
+        ],
+    )
+    df.set_index("norad_num")
+    return df
 
 
 def fix_discrepencies(satdb, satcat):
     log.info("Fixing discrepencies in the data...")
     # discrepencies_url = "http://celestrak.com/pub/UCS-SD-Discrepancies.txt"
-    # discrepencies = pd.read_csv(
-    #     discrepencies_url, delim_whitespace=True, encoding="Windows-1252"
-    # )
-    return (satdb, satcat)
+    for i, satdb_row in satdb.iterrows():
+        norad_number = format(satdb_row.loc["norad_number"])
+        try:
+            satcat_row = satcat.loc[norad_number]
+            satdb.loc[i, "name"] = satcat_row.loc["name"]
+            satdb.loc[i, "perigee_km"] = satcat_row.loc["perigee"]
+            satdb.loc[i, "apogee_km"] = satcat_row.loc["apogee"]
+            satdb.loc[i, "inclination_degrees"] = satcat_row.loc["inclination_deg"]
+            satdb.loc[i, "period_minutes"] = satcat_row.loc["orbit_period_minutes"]
+            satdb.loc[i, "launch_date"] = satcat_row.loc["launch_date"]
+            satdb.loc[i, "launch_site"] = satcat_row.loc["launch_site"]
+            satdb.loc[i, "international_designator"] = satcat_row.loc["intl_desg"]
+
+            import random
+
+            if random.randint(1, 101) < 3:
+                satdb.loc[i, "name"] = "BLAH BLAH BLAH"
+
+        except (KeyError, ValueError):
+            log.warning(
+                f"""Satellite with norad number {norad_number} in satdb is not found in the Celestrak Catalog.
+                    Relying on SatDB data only."""
+            )
+
+    return satdb
 
 
 def format(val):
     if pd.isna(val):
         return None
+
+    if type(val).__module__ == "numpy":
+        val = val.item()
 
     if type(val) is int or type(val) is float:
         return val
@@ -94,12 +183,24 @@ def update_ucs_satdb_table(Database, df):
         data_batch.append(savable)
         total_rows = total_rows + 1
 
-        if len(data_batch) >= 100:
-            db.add_ucs_satdb_batch(data_batch)
-            data_batch = []
+    if len(data_batch) > 0:
+        db.add_ucs_satdb_batch(data_batch)
 
-    db.add_ucs_satdb_batch(data_batch)
-    log.info(f"{total_rows} added to ucs satdb")
+
+def update_ucs_satdb_fixed_table(Database, df):
+    log.info("Updating the ucs_satdb_fixed table...")
+
+    total_rows = 0
+    data_batch = []
+    for row in df.itertuples(index=False, name=None):
+        record_fingerprint = fingerprint_line("".join(str(e) for e in row))
+        savable = [format(i) for i in row] + [record_fingerprint]
+
+        data_batch.append(savable)
+        total_rows = total_rows + 1
+
+    if len(data_batch) > 0:
+        db.add_ucs_satdb_fixed_batch(data_batch)
 
 
 def parse_celestrak_row(line):
@@ -156,34 +257,30 @@ def update_celestrak_satcat_table(Database, df):
     log.info("Updating the celestrak_satcat table...")
 
     data_batch = []
-    total_rows = 0
     for row in df.itertuples(index=False, name=None):
-        row = parse_celestrak_row(row[0])
         record_fingerprint = fingerprint_line("".join(str(e) for e in row))
         savable = [format(i) for i in row] + [record_fingerprint]
 
         data_batch.append(savable)
-        total_rows = total_rows + 1
 
-        if len(data_batch) >= 100:
-            db.add_celestrak_satcat_batch(data_batch)
-            data_batch = []
-
-    db.add_celestrak_satcat_batch(data_batch)
-    log.info(f"{total_rows} added to celestrak satcat")
+    if len(data_batch) > 0:
+        db.add_celestrak_satcat_batch(data_batch)
 
 
 db = Database(CONFIG)
 db.create_celestrak_satcat_table()
 db.create_ucs_satdb_table()
+db.create_ucs_satdb_fixed_table()
 
 satdb = load_ucs_satdb_data()
 satcat = load_celestrak_satcat_data()
 
-satdb, satcat = fix_discrepencies(satdb, satcat)
-
 update_ucs_satdb_table(db, satdb)
 update_celestrak_satcat_table(db, satcat)
+
+satdb = fix_discrepencies(satdb, satcat)
+
+update_ucs_satdb_fixed_table(db, satdb)
 
 log.info("Script Complete")
 sys.exit(0)

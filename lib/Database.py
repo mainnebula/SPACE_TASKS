@@ -8,6 +8,12 @@ from yaml import load, Loader
 log = logger(__name__)
 
 
+def batch(iterable, n=1):
+    l = len(iterable)
+    for ndx in range(0, l, n):
+        yield iterable[ndx : min(ndx + n, l)]
+
+
 class Database:
     def __init__(self, db_config_path):
 
@@ -103,18 +109,23 @@ class Database:
         finally:
             True
 
-    def create_ucs_satdb_table(self):
+    def create_ucs_satdb_fixed_table(self, ext=""):
+        self.create_ucs_satdb_table("_fixed")
+
+    def create_ucs_satdb_table(self, ext=""):
         """ Union of Concerned Scientists Satellite Database """
 
-        if self.checkTableExists("ucs_satdb"):
-            log.info("UCS SAT DB table found.")
+        if self.checkTableExists("ucs_satdb" + ext):
+            log.info("UCS SAT DB" + ext + " table found.")
             return
 
         log.info("Creating Union of Concerned Scientists Satellite Database table...")
 
         # FIXME: Need to optimize these auto-gen types
         createquery = (
-            """CREATE TABLE IF NOT EXISTS ucs_satdb (
+            """CREATE TABLE IF NOT EXISTS ucs_satdb"""
+            + ext
+            + """(
           satdb_id              INTEGER PRIMARY KEY"""
             + self.increment
             + """,
@@ -192,12 +203,120 @@ class Database:
                     if not existing_row:
                         data_to_update.append(data)
             if len(data_to_update) > 0:
+                for data in batch(data_to_update, 100):
+                    with self.conn.cursor() as cursor:
+                        cursor.executemany(insert_query, data)
+                        self.conn.commit()
+                log.info(f"{len(data_to_update)} rows added to celestrak_satcat")
+        except Exception as e:
+            log.error("MYSQL ERROR: {}".format(e))
+
+    def add_ucs_satdb_fixed_batch(self, data_batch):
+        """ Add an UCS DB Fixed entry to the database """
+
+        find_query = """
+            SELECT * FROM `ucs_satdb_fixed`
+            WHERE `line_fingerprint`=%s
+        """
+
+        find_with_norad = """
+            SELECT * FROM `ucs_satdb_fixed`
+            WHERE `norad_number`=%s
+        """
+
+        delete_by_norad = """
+            DELETE FROM ucs_satdb_fixed
+            WHERE norad_number=%s;
+        """
+
+        insert_query = """
+        INSERT INTO ucs_satdb_fixed VALUES
+            (NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, NULL)
+        """
+
+        update_query = """
+        UPDATE ucs_satdb_fixed
+        SET
+            name = %s,
+            country_registered = %s,
+            country_owner = %s,
+            owner_operator = %s,
+            users = %s,
+            purpose = %s,
+            purpose_detailed = %s,
+            orbit_class = %s,
+            orbit_type = %s,
+            GEO_longitude = %s,
+            perigee_km = %s,
+            apogee_km = %s,
+            eccentricity = %s,
+            inclination_degrees = %s,
+            period_minutes = %s,
+            launch_mass_kg = %s,
+            dry_mass_kg = %s,
+            power_watts = %s,
+            launch_date = %s,
+            expected_lifetime_years = %s,
+            contractor = %s,
+            contractor_country = %s,
+            launch_site = %s,
+            launch_vehicle = %s,
+            international_designator = %s, 
+            norad_number = %s,
+            comments = %s,
+            detailed_comments = %s,
+            source_1 = %s,
+            source_2 = %s,
+            source_3 = %s,
+            source_4 = %s,
+            source_5 = %s,
+            source_6 = %s,
+            source_7 = %s,
+            line_fingerprint = %s,
+            import_timestamp = NOW()
+        WHERE norad_number = %s;
+        """
+
+        data_to_insert = []
+        data_to_update = []
+        try:
+            for data in data_batch:
                 with self.conn.cursor() as cursor:
-                    cursor.executemany(insert_query, data_to_update)
-                    self.conn.commit()
-                    if len(data_to_update < 15):
-                        for row in data_to_update:
-                            log.info(row)
+                    norad_number = data[25]
+                    fingerprint = data[-1]
+                    cursor.execute(find_query, (fingerprint,))
+                    existing_fingerprint = cursor.fetchone()
+
+                    if not existing_fingerprint:
+                        cursor.execute(find_with_norad, (norad_number,))
+                        existing_row = cursor.fetchone()
+                        if existing_row:
+                            cursor.execute(delete_by_norad, (norad_number))
+                            log.info(
+                                f"""
+                                Removing existing entries with norad number {norad_number}.
+                                Satellite with Norad Number {norad_number} will be updated.
+                                """
+                            )
+    
+                            # data_to_update.append(data + [norad_number])
+                        data_to_insert.append(data)
+
+            if len(data_to_insert) > 0:
+                for data in batch(data_to_insert, 100):
+                    with self.conn.cursor() as cursor:
+                        cursor.executemany(insert_query, data)
+                        self.conn.commit()
+                log.info(f"{len(data_to_insert)} rows added to ucs_satdb_fixed")
+            if len(data_to_update) > 0:
+                for data in batch(data_to_update, 100):
+                    with self.conn.cursor() as cursor:
+                        cursor.executemany(update_query, data)
+                        self.conn.commit()
+                log.info(f"{len(data_to_update)} rows updated in ucs_satdb_fixed")
         except Exception as e:
             log.error("MYSQL ERROR: {}".format(e))
 
@@ -225,20 +344,10 @@ class Database:
                     if not existing_row:
                         data_to_update.append(data)
             if len(data_to_update) > 0:
-                with self.conn.cursor() as cursor:
-                    cursor.executemany(insert_query, data_to_update)
-                    self.conn.commit()
+                for data in batch(data_to_update, 100):
+                    with self.conn.cursor() as cursor:
+                        cursor.executemany(insert_query, data)
+                        self.conn.commit()
+                log.info(f"{len(data_to_update)} rows added to ucs_satdb")
         except Exception as e:
             log.error("MYSQL ERROR: {}".format(e))
-
-    def fixUCSDB_from_SATCAT(self):
-        """ TODO """
-        pass
-
-    def update_SATCAT(self):
-        """ TODO """
-        pass
-
-    def update_UCSDB(self):
-        """ TODO """
-        pass
