@@ -200,37 +200,13 @@ if __name__ == '__main__':
     char_buffer = ''
     for _line in _file:
         line = _line.decode("utf-8")
-        #x = line.split(' ')
-        #sat = x[0]
-        xx = []
-        name_start = False
-        prev_char = ''
-        for _char in line:
-            if len(xx) < 3:
-                if _char != ' ':
-                    char_buffer += _char
-                else:
-                    if len(char_buffer) > 0:
-                        xx.append(char_buffer)
-                        char_buffer = ''
-            elif len(xx) == 3:
-                # name saving mode
-                if len(char_buffer) == 0 and _char != ' ':
-                    name_start = True
-                if name_start == True:
-                    char_buffer += _char
-                if prev_char == ' ' and _char == ' ':
-                    xx.append(char_buffer.strip())
-                    char_buffer = ''
-                    break
-                prev_char = _char
-                
         # get sat code and name
-        sat_code = xx[0]
-        sat_name = xx[3]
-        total += 1
+        sat_code = line[0:10].strip()
+        sat_name = line[23:47].strip()
+        # save to buffer
         sat_details = {'code': sat_code, 'name': sat_name}
         _buffer.append(sat_details)
+        total += 1
         print(f'{total}', end='\r')
         #if total == 10000: break # TEST LIMIT: comment out this line to run full scan
     
