@@ -201,7 +201,7 @@ if __name__ == '__main__':
     for _line in _file:
         line = _line.decode("utf-8")
         # get sat code and name
-        sat_code = line[0:10].strip()
+        sat_code = line[0:11].strip()
         sat_name = line[23:47].strip()
         # save to buffer
         sat_details = {'code': sat_code, 'name': sat_name}
